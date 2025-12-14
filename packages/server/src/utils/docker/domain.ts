@@ -278,11 +278,19 @@ export const createDomainLabels = (
 		middlewares.push("redirect-to-https@file");
 	}
 
-	// Add stripPath middleware if needed
-	if (stripPath && path && path !== "/") {
+	// Add stripPath middleware if needed (only for websecure or non-HTTPS)
+	if (
+		(entrypoint === "websecure" || !https) &&
+		stripPath &&
+		path &&
+		path !== "/"
+	) {
 		const middlewareName = `stripprefix-${appName}-${uniqueConfigKey}`;
-		// Only define middleware once (on web entrypoint)
-		if (entrypoint === "web") {
+		// Only define middleware once (prefer websecure if HTTPS, otherwise web)
+		if (
+			(https && entrypoint === "websecure") ||
+			(!https && entrypoint === "web")
+		) {
 			labels.push(
 				`traefik.http.middlewares.${middlewareName}.stripprefix.prefixes=${path}`,
 			);
@@ -290,11 +298,19 @@ export const createDomainLabels = (
 		middlewares.push(middlewareName);
 	}
 
-	// Add internalPath middleware if needed
-	if (internalPath && internalPath !== "/" && internalPath.startsWith("/")) {
+	// Add internalPath middleware if needed (only for websecure or non-HTTPS)
+	if (
+		(entrypoint === "websecure" || !https) &&
+		internalPath &&
+		internalPath !== "/" &&
+		internalPath.startsWith("/")
+	) {
 		const middlewareName = `addprefix-${appName}-${uniqueConfigKey}`;
-		// Only define middleware once (on web entrypoint)
-		if (entrypoint === "web") {
+		// Only define middleware once (prefer websecure if HTTPS, otherwise web)
+		if (
+			(https && entrypoint === "websecure") ||
+			(!https && entrypoint === "web")
+		) {
 			labels.push(
 				`traefik.http.middlewares.${middlewareName}.addprefix.prefix=${internalPath}`,
 			);

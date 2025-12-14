@@ -31,7 +31,9 @@ const dev = process.env.NODE_ENV !== "production";
 // This prevents race conditions with the install script
 if (process.env.NODE_ENV === "production" && !IS_CLOUD) {
 	setupDirectories();
-	createDefaultTraefikConfig();
+	// Note: createDefaultTraefikConfig is async but we can't await here in top-level
+	// It will attempt to read env vars from container if it exists, otherwise uses defaults
+	void createDefaultTraefikConfig();
 	createDefaultServerTraefikConfig();
 	console.log("✅ Critical initialization complete");
 }

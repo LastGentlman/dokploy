@@ -1,5 +1,4 @@
 import {
-	appendFileSync,
 	chmodSync,
 	existsSync,
 	mkdirSync,
@@ -11,26 +10,10 @@ import path from "node:path";
 import type { ContainerCreateOptions, CreateServiceOptions } from "dockerode";
 import { stringify } from "yaml";
 import { paths } from "../constants";
+import { readEnvironmentVariables } from "../services/settings";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
 import type { FileConfig } from "../utils/traefik/file-types";
 import type { MainTraefikConfig } from "../utils/traefik/types";
-
-const DEBUG_LOG_PATH = "/home/rodry/Desktop/dokploy/.cursor/debug.log";
-
-const debugLog = (location: string, message: string, data: unknown) => {
-	try {
-		const logEntry = JSON.stringify({
-			location,
-			message,
-			data,
-			timestamp: Date.now(),
-			sessionId: "debug-session",
-		}) + "\n";
-		appendFileSync(DEBUG_LOG_PATH, logEntry, "utf8");
-	} catch (error) {
-		// Silently fail if logging doesn't work
-	}
-};
 
 export const TRAEFIK_SSL_PORT =
 	Number.parseInt(process.env.TRAEFIK_SSL_PORT!, 10) || 443;
@@ -90,15 +73,6 @@ export const initializeStandaloneTraefik = async ({
 
 	// Map Cloudflare environment variables to Traefik's expected format
 	const mappedEnv = mapCloudflareEnvVars(env);
-	debugLog("traefik-setup.ts:93", "Mapping Cloudflare env vars", {
-		originalCount: env?.length || 0,
-		mappedCount: mappedEnv.length,
-		hasCFToken: mappedEnv.some((e) => e.startsWith("CF_DNS_API_TOKEN")),
-		hasCFEmail: mappedEnv.some((e) => e.startsWith("CF_API_EMAIL")),
-		hasCFKey: mappedEnv.some((e) => e.startsWith("CF_API_KEY")),
-		hasOldToken: env?.some((e) => e.startsWith("CLOUDFLARE_DNS_API_TOKEN")),
-		hasOldEmail: env?.some((e) => e.startsWith("CLOUDFLARE_EMAIL")),
-	});
 
 	const settings: ContainerCreateOptions = {
 		name: containerName,
@@ -158,15 +132,6 @@ export const initializeTraefikService = async ({
 
 	// Map Cloudflare environment variables to Traefik's expected format
 	const mappedEnv = mapCloudflareEnvVars(env);
-	debugLog("traefik-setup.ts:134", "Mapping Cloudflare env vars for service", {
-		originalCount: env?.length || 0,
-		mappedCount: mappedEnv.length,
-		hasCFToken: mappedEnv.some((e) => e.startsWith("CF_DNS_API_TOKEN")),
-		hasCFEmail: mappedEnv.some((e) => e.startsWith("CF_API_EMAIL")),
-		hasCFKey: mappedEnv.some((e) => e.startsWith("CF_API_KEY")),
-		hasOldToken: env?.some((e) => e.startsWith("CLOUDFLARE_DNS_API_TOKEN")),
-		hasOldEmail: env?.some((e) => e.startsWith("CLOUDFLARE_EMAIL")),
-	});
 
 	const settings: CreateServiceOptions = {
 		Name: appName,
@@ -530,7 +495,7 @@ export const getDefaultServerTraefikConfig = (env?: string[]) => {
 	return yamlStr;
 };
 
-export const createDefaultTraefikConfig = () => {
+export const createDefaultTraefikConfig = async () => {
 	const { MAIN_TRAEFIK_PATH, DYNAMIC_TRAEFIK_PATH } = paths();
 	const mainConfig = path.join(MAIN_TRAEFIK_PATH, "traefik.yml");
 	const acmeJsonPath = path.join(DYNAMIC_TRAEFIK_PATH, "acme.json");
@@ -555,7 +520,19 @@ export const createDefaultTraefikConfig = () => {
 		}
 	}
 
-	const yamlStr = getDefaultTraefikConfig();
+	// Try to read environment variables from Traefik container if it exists
+	let envVars: string[] | undefined;
+	try {
+		const envString = await readEnvironmentVariables("dokploy-traefik");
+		if (envString) {
+			envVars = envString.split("\n").filter((line: string) => line.trim());
+		}
+	} catch (error) {
+		// Container may not exist yet, which is fine - we'll use defaults
+		console.log("Could not read Traefik environment variables, using defaults");
+	}
+
+	const yamlStr = getDefaultTraefikConfig(envVars);
 	writeFileSync(mainConfig, yamlStr, "utf8");
 	console.log("Traefik config created successfully");
 };

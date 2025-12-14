@@ -20,7 +20,7 @@ import {
 		createDefaultMiddlewares();
 		await initializeSwarm();
 		await initializeNetwork();
-		createDefaultTraefikConfig();
+		await createDefaultTraefikConfig();
 		createDefaultServerTraefikConfig();
 		await execAsync("docker pull traefik:v3.6.1");
 		await initializeStandaloneTraefik();

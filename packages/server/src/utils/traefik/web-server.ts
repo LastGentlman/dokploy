@@ -1,5 +1,4 @@
 import {
-	appendFileSync,
 	existsSync,
 	readFileSync,
 	statSync,
@@ -18,22 +17,6 @@ import {
 } from "./application";
 import type { FileConfig } from "./file-types";
 import type { MainTraefikConfig } from "./types";
-
-const DEBUG_LOG_PATH = "/home/rodry/Desktop/dokploy/.cursor/debug.log";
-const debugLog = (location: string, message: string, data: unknown) => {
-	try {
-		const logEntry = `${JSON.stringify({
-			location,
-			message,
-			data,
-			timestamp: Date.now(),
-			sessionId: "debug-session",
-		})}\n`;
-		appendFileSync(DEBUG_LOG_PATH, logEntry, "utf8");
-	} catch (error) {
-		// Silently fail if logging doesn't work
-	}
-};
 
 export const updateServerTraefik = (
 	user: User | null,
@@ -118,77 +101,15 @@ export const updateLetsEncryptEmail = async (
 			if (envString) {
 				envVars = envString.split("\n").filter((line: string) => line.trim());
 			}
-			// #region agent log
-			fetch(
-				"http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						location: "web-server.ts:96",
-						message: "Traefik env vars read",
-						data: {
-							envVarCount: envVars.length,
-							hasCloudflareToken: envVars.some((e) =>
-								e.includes("CLOUDFLARE_DNS_API_TOKEN"),
-							),
-							hasCloudflareEmail: envVars.some((e) =>
-								e.includes("CLOUDFLARE_EMAIL"),
-							),
-							envVars: envVars
-								.filter((e) => e.includes("CLOUDFLARE"))
-								.map((e) => e.split("=")[0]),
-						},
-						timestamp: Date.now(),
-						sessionId: "debug-session",
-						runId: "run1",
-						hypothesisId: "D",
-					}),
-				},
-			).catch(() => {});
-			// #endregion
 		} catch (error) {
 			// If we can't read env vars, default to HTTP challenge
 			console.warn(
 				"Could not read Traefik environment variables, defaulting to HTTP challenge",
 				error,
 			);
-			// #region agent log
-			fetch(
-				"http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						location: "web-server.ts:104",
-						message: "Failed to read Traefik env vars",
-						data: { error: error instanceof Error ? error.message : "unknown" },
-						timestamp: Date.now(),
-						sessionId: "debug-session",
-						runId: "run1",
-						hypothesisId: "D",
-					}),
-				},
-			).catch(() => {});
-			// #endregion
 		}
 
 		const challengeType = getChallengeType(envVars);
-		// #region agent log
-		fetch("http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				location: "web-server.ts:107",
-				message: "Challenge type determined",
-				data: { challengeType, newEmail },
-				timestamp: Date.now(),
-				sessionId: "debug-session",
-				runId: "run1",
-				hypothesisId: "D",
-			}),
-		}).catch(() => {});
-		// #endregion
 		const { MAIN_TRAEFIK_PATH } = paths();
 		const configPath = join(MAIN_TRAEFIK_PATH, "traefik.yml");
 		const configContent = readFileSync(configPath, "utf8");

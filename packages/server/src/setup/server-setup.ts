@@ -553,7 +553,12 @@ fi
 `;
 
 const createTraefikConfig = () => {
-	const config = getDefaultServerTraefikConfig();
+	// Note: This function generates a shell script for remote server setup.
+	// At script generation time, we don't have access to the remote server's
+	// environment variables, so we pass undefined to use defaults.
+	// The script will be executed on the remote server where env vars may not
+	// be available yet during initial setup.
+	const config = getDefaultServerTraefikConfig(undefined);
 
 	const command = `
 	if [ -f "/etc/dokploy/traefik/dynamic/acme.json" ]; then
