@@ -29,14 +29,14 @@ export const ShowCertificates = () => {
 							Certificates
 						</CardTitle>
 						<CardDescription>
-							Create certificates in the Traefik directory
+							Manage SSL/TLS certificates for your applications. Certificates are stored in the Traefik directory and used to secure HTTPS connections.
 						</CardDescription>
 
 						<AlertBlock type="warning">
-							Certificates are created in the Traefik directory. Traefik uses
+							<strong>Important:</strong> Certificates are created in the Traefik directory. Traefik uses
 							these certificates to secure your applications. Using invalid
 							certificates can break your Traefik instance, preventing access to
-							your applications.
+							your applications. Click "Add Certificate" below to create a new certificate. For production use, consider using Let's Encrypt certificates which can be automatically generated when configuring domains in your applications.
 						</AlertBlock>
 					</CardHeader>
 					<CardContent className="space-y-2 py-8 border-t">

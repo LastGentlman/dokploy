@@ -241,7 +241,7 @@ export const settingsRouter = createTRPCRouter({
 
 			updateServerTraefik(user, input.host);
 			if (input.letsEncryptEmail) {
-				updateLetsEncryptEmail(input.letsEncryptEmail);
+				await updateLetsEncryptEmail(input.letsEncryptEmail, input.serverId);
 			}
 
 			return user;

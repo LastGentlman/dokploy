@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { appendFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { docker } from "@dokploy/server/constants";
 import {
@@ -391,10 +391,34 @@ export const checkPortInUse = async (
 };
 
 export const writeTraefikSetup = async (input: TraefikOptions) => {
+	const DEBUG_LOG_PATH = "/home/rodry/Desktop/dokploy/.cursor/debug.log";
+	const debugLog = (location: string, message: string, data: unknown) => {
+		try {
+			const logEntry = JSON.stringify({
+				location,
+				message,
+				data,
+				timestamp: Date.now(),
+				sessionId: "debug-session",
+			}) + "\n";
+			appendFileSync(DEBUG_LOG_PATH, logEntry, "utf8");
+		} catch {}
+	};
+	// #region agent log
+	debugLog('settings.ts:393', 'writeTraefikSetup entry', {
+		envCount: input.env?.length || 0,
+		hasCloudflareToken: input.env?.some(e => e.includes('CLOUDFLARE_DNS_API_TOKEN') || e.includes('CF_DNS_API_TOKEN')),
+		hasCloudflareEmail: input.env?.some(e => e.includes('CLOUDFLARE_EMAIL') || e.includes('CF_API_EMAIL')),
+		serverId: input.serverId,
+	});
+	// #endregion
 	const resourceType = await getDockerResourceType(
 		"dokploy-traefik",
 		input.serverId,
 	);
+	// #region agent log
+	debugLog('settings.ts:400', 'Traefik resource type determined', { resourceType });
+	// #endregion
 
 	if (resourceType === "service") {
 		await initializeTraefikService({
@@ -410,5 +434,28 @@ export const writeTraefikSetup = async (input: TraefikOptions) => {
 		});
 	} else {
 		throw new Error("Traefik resource type not found");
+	}
+	
+	// Verify environment variables after setup
+	try {
+		const actualEnv = await readEnvironmentVariables("dokploy-traefik", input.serverId);
+		if (actualEnv) {
+			const envVars = actualEnv.split("\n");
+			// #region agent log
+			debugLog('settings.ts:415', 'Traefik container env vars after setup', {
+				envVarCount: envVars.length,
+				hasCFToken: envVars.some(e => e.startsWith('CF_DNS_API_TOKEN')),
+				hasCFEmail: envVars.some(e => e.startsWith('CF_API_EMAIL')),
+				hasCFKey: envVars.some(e => e.startsWith('CF_API_KEY')),
+				hasOldToken: envVars.some(e => e.startsWith('CLOUDFLARE_DNS_API_TOKEN')),
+				hasOldEmail: envVars.some(e => e.startsWith('CLOUDFLARE_EMAIL')),
+				cloudflareVars: envVars.filter(e => e.includes('CLOUDFLARE') || e.includes('CF_')).map(e => e.split('=')[0]),
+			});
+			// #endregion
+		}
+	} catch (error) {
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings.ts:420',message:'Failed to read Traefik env vars after setup',data:{error:error instanceof Error?error.message:'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+		// #endregion
 	}
 };

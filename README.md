@@ -60,6 +60,25 @@ curl -sSL https://dokploy.com/install.sh | sh
 
 For detailed documentation, visit [docs.dokploy.com](https://docs.dokploy.com).
 
+## 🔧 Troubleshooting
+
+### Domain Access Issues
+
+If you're having trouble accessing your application via a custom domain, use the diagnostic script to identify the issue:
+
+```bash
+pnpm tsx scripts/diagnose-domain.ts your-domain.com
+```
+
+This script will check:
+- DNS resolution
+- Domain configuration in Dokploy
+- Application status
+- Traefik routing configuration
+- SSL certificate setup
+
+For detailed troubleshooting steps and common solutions, see [DOMAIN_TROUBLESHOOTING.md](DOMAIN_TROUBLESHOOTING.md).
+
 ## ♥️ Sponsors
 
 🙏 We're deeply grateful to all our sponsors who make Dokploy possible! Your support helps cover the costs of hosting, testing, and developing new features.

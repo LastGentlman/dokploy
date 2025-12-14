@@ -14,6 +14,9 @@ import { createPathMiddlewares, removePathMiddlewares } from "./middleware";
 
 export const manageDomain = async (app: ApplicationNested, domain: Domain) => {
 	const { appName } = app;
+	// #region agent log
+	fetch('http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'domain.ts:15',message:'manageDomain entry',data:{appName,host:domain.host,https:domain.https,certificateType:domain.certificateType,serverId:app.serverId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+	// #endregion
 	let config: FileConfig;
 
 	if (app.serverId) {
@@ -114,6 +117,9 @@ export const createRouterConfig = async (
 
 	const { host, path, https, uniqueConfigKey, internalPath, stripPath } =
 		domain;
+	// #region agent log
+	fetch('http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'domain.ts:107',message:'createRouterConfig entry',data:{host,entryPoint,certificateType,https,hostLength:host?.length,hostEndsWithDot:host?.endsWith('.'),hostTrimmed:host?.trim()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+	// #endregion
 	const routerConfig: HttpRouter = {
 		rule: `Host(\`${host}\`)${path !== null && path !== "/" ? ` && PathPrefix(\`${path}\`)` : ""}`,
 		service: `${appName}-service-${uniqueConfigKey}`,
@@ -165,6 +171,9 @@ export const createRouterConfig = async (
 	if (entryPoint === "websecure") {
 		if (certificateType === "letsencrypt") {
 			routerConfig.tls = { certResolver: "letsencrypt" };
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'domain.ts:166',message:'letsencrypt cert resolver configured',data:{host,entryPoint,certificateType,routerRule:routerConfig.rule},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+			// #endregion
 		} else if (certificateType === "custom" && domain.customCertResolver) {
 			routerConfig.tls = { certResolver: domain.customCertResolver };
 		} else if (certificateType === "none") {
@@ -172,5 +181,8 @@ export const createRouterConfig = async (
 		}
 	}
 
+	// #region agent log
+	fetch('http://127.0.0.1:7242/ingest/35df5ecb-1480-48ee-8757-78f0a7da865e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'domain.ts:175',message:'createRouterConfig exit',data:{host,entryPoint,hasTls:!!routerConfig.tls,certResolver:routerConfig.tls?.certResolver},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+	// #endregion
 	return routerConfig;
 };

@@ -1,4 +1,5 @@
 import {
+	appendFileSync,
 	chmodSync,
 	existsSync,
 	mkdirSync,
@@ -13,6 +14,23 @@ import { paths } from "../constants";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
 import type { FileConfig } from "../utils/traefik/file-types";
 import type { MainTraefikConfig } from "../utils/traefik/types";
+
+const DEBUG_LOG_PATH = "/home/rodry/Desktop/dokploy/.cursor/debug.log";
+
+const debugLog = (location: string, message: string, data: unknown) => {
+	try {
+		const logEntry = JSON.stringify({
+			location,
+			message,
+			data,
+			timestamp: Date.now(),
+			sessionId: "debug-session",
+		}) + "\n";
+		appendFileSync(DEBUG_LOG_PATH, logEntry, "utf8");
+	} catch (error) {
+		// Silently fail if logging doesn't work
+	}
+};
 
 export const TRAEFIK_SSL_PORT =
 	Number.parseInt(process.env.TRAEFIK_SSL_PORT!, 10) || 443;
@@ -70,6 +88,18 @@ export const initializeStandaloneTraefik = async ({
 		portBindings[portKey] = [{ HostPort: port.publishedPort.toString() }];
 	}
 
+	// Map Cloudflare environment variables to Traefik's expected format
+	const mappedEnv = mapCloudflareEnvVars(env);
+	debugLog("traefik-setup.ts:93", "Mapping Cloudflare env vars", {
+		originalCount: env?.length || 0,
+		mappedCount: mappedEnv.length,
+		hasCFToken: mappedEnv.some((e) => e.startsWith("CF_DNS_API_TOKEN")),
+		hasCFEmail: mappedEnv.some((e) => e.startsWith("CF_API_EMAIL")),
+		hasCFKey: mappedEnv.some((e) => e.startsWith("CF_API_KEY")),
+		hasOldToken: env?.some((e) => e.startsWith("CLOUDFLARE_DNS_API_TOKEN")),
+		hasOldEmail: env?.some((e) => e.startsWith("CLOUDFLARE_EMAIL")),
+	});
+
 	const settings: ContainerCreateOptions = {
 		name: containerName,
 		Image: imageName,
@@ -90,7 +120,7 @@ export const initializeStandaloneTraefik = async ({
 			],
 			PortBindings: portBindings,
 		},
-		Env: env,
+		Env: mappedEnv,
 	};
 
 	const docker = await getRemoteDocker(serverId);
@@ -126,12 +156,24 @@ export const initializeTraefikService = async ({
 	const imageName = `traefik:v${TRAEFIK_VERSION}`;
 	const appName = "dokploy-traefik";
 
+	// Map Cloudflare environment variables to Traefik's expected format
+	const mappedEnv = mapCloudflareEnvVars(env);
+	debugLog("traefik-setup.ts:134", "Mapping Cloudflare env vars for service", {
+		originalCount: env?.length || 0,
+		mappedCount: mappedEnv.length,
+		hasCFToken: mappedEnv.some((e) => e.startsWith("CF_DNS_API_TOKEN")),
+		hasCFEmail: mappedEnv.some((e) => e.startsWith("CF_API_EMAIL")),
+		hasCFKey: mappedEnv.some((e) => e.startsWith("CF_API_KEY")),
+		hasOldToken: env?.some((e) => e.startsWith("CLOUDFLARE_DNS_API_TOKEN")),
+		hasOldEmail: env?.some((e) => e.startsWith("CLOUDFLARE_EMAIL")),
+	});
+
 	const settings: CreateServiceOptions = {
 		Name: appName,
 		TaskTemplate: {
 			ContainerSpec: {
 				Image: imageName,
-				Env: env,
+				Env: mappedEnv,
 				Mounts: [
 					{
 						Type: "bind",
@@ -250,7 +292,106 @@ export const createDefaultServerTraefikConfig = () => {
 	);
 };
 
-export const getDefaultTraefikConfig = () => {
+/**
+ * Maps Cloudflare environment variables to Traefik's expected format
+ * Traefik's Cloudflare provider expects CF_DNS_API_TOKEN or CF_API_EMAIL/CF_API_KEY
+ * but users may set CLOUDFLARE_DNS_API_TOKEN or CLOUDFLARE_EMAIL/CLOUDFLARE_API_KEY
+ *
+ * This function:
+ * 1. Preserves existing CF_* vars if they're already set (preferred)
+ * 2. Maps CLOUDFLARE_* vars to CF_* format only if CF_* version doesn't exist
+ * 3. Removes old CLOUDFLARE_* vars to avoid duplicates
+ */
+const mapCloudflareEnvVars = (env?: string[]): string[] => {
+	if (!env) return [];
+
+	const mapped: string[] = [];
+	const keysToSkip = new Set<string>();
+	const hasCFToken = env.some((e) => e.startsWith("CF_DNS_API_TOKEN="));
+	const hasCFEmail = env.some((e) => e.startsWith("CF_API_EMAIL="));
+	const hasCFKey = env.some((e) => e.startsWith("CF_API_KEY="));
+
+	// First pass: map CLOUDFLARE_* to CF_* only if CF_* version doesn't exist
+	for (const envVar of env) {
+		// Map CLOUDFLARE_DNS_API_TOKEN to CF_DNS_API_TOKEN (only if CF_DNS_API_TOKEN doesn't exist)
+		if (envVar.startsWith("CLOUDFLARE_DNS_API_TOKEN=") && !hasCFToken) {
+			const value = envVar.split("=").slice(1).join("=");
+			mapped.push(`CF_DNS_API_TOKEN=${value}`);
+			keysToSkip.add("CLOUDFLARE_DNS_API_TOKEN");
+		}
+		// Map CLOUDFLARE_EMAIL to CF_API_EMAIL (only if CF_API_EMAIL doesn't exist)
+		else if (envVar.startsWith("CLOUDFLARE_EMAIL=") && !hasCFEmail) {
+			const value = envVar.split("=").slice(1).join("=");
+			mapped.push(`CF_API_EMAIL=${value}`);
+			keysToSkip.add("CLOUDFLARE_EMAIL");
+		}
+		// Map CLOUDFLARE_API_KEY to CF_API_KEY (only if CF_API_KEY doesn't exist)
+		else if (envVar.startsWith("CLOUDFLARE_API_KEY=") && !hasCFKey) {
+			const value = envVar.split("=").slice(1).join("=");
+			mapped.push(`CF_API_KEY=${value}`);
+			keysToSkip.add("CLOUDFLARE_API_KEY");
+		}
+		// Always skip CLOUDFLARE_* vars if CF_* version exists
+		else if (envVar.startsWith("CLOUDFLARE_DNS_API_TOKEN=") && hasCFToken) {
+			keysToSkip.add("CLOUDFLARE_DNS_API_TOKEN");
+		} else if (envVar.startsWith("CLOUDFLARE_EMAIL=") && hasCFEmail) {
+			keysToSkip.add("CLOUDFLARE_EMAIL");
+		} else if (envVar.startsWith("CLOUDFLARE_API_KEY=") && hasCFKey) {
+			keysToSkip.add("CLOUDFLARE_API_KEY");
+		}
+	}
+
+	// Second pass: add all other env vars, skipping ones we've already mapped
+	for (const envVar of env) {
+		const key = envVar.split("=")[0];
+		if (key && !keysToSkip.has(key)) {
+			mapped.push(envVar);
+		}
+	}
+
+	return mapped;
+};
+
+/**
+ * Detects the challenge type based on environment variables
+ * Returns 'dns' if Cloudflare DNS API token is present, otherwise 'http'
+ * Checks for both CLOUDFLARE_* and CF_* formats
+ */
+const getChallengeType = (env?: string[]): "http" | "dns" => {
+	if (!env) return "http";
+	const hasCloudflare = env.some(
+		(e) =>
+			e.includes("CLOUDFLARE_DNS_API_TOKEN") ||
+			e.includes("CLOUDFLARE_EMAIL") ||
+			e.includes("CF_DNS_API_TOKEN") ||
+			e.includes("CF_API_EMAIL"),
+	);
+	return hasCloudflare ? "dns" : "http";
+};
+
+/**
+ * Gets the Let's Encrypt email from environment variables or returns default
+ * Checks for both CLOUDFLARE_EMAIL and CF_API_EMAIL formats
+ */
+const getLetsEncryptEmail = (env?: string[]): string => {
+	if (!env) return "test@localhost.com";
+	// Check for CLOUDFLARE_EMAIL first (legacy format)
+	let emailVar = env.find((e) => e.startsWith("CLOUDFLARE_EMAIL="));
+	if (emailVar) {
+		return emailVar.split("=").slice(1).join("=") || "test@localhost.com";
+	}
+	// Check for CF_API_EMAIL (Traefik format)
+	emailVar = env.find((e) => e.startsWith("CF_API_EMAIL="));
+	if (emailVar) {
+		return emailVar.split("=").slice(1).join("=") || "test@localhost.com";
+	}
+	return "test@localhost.com";
+};
+
+export const getDefaultTraefikConfig = (env?: string[]) => {
+	const challengeType = getChallengeType(env);
+	const email = getLetsEncryptEmail(env);
+
 	const configObject: MainTraefikConfig = {
 		global: {
 			sendAnonymousUsage: false,
@@ -288,31 +429,35 @@ export const getDefaultTraefikConfig = () => {
 				http3: {
 					advertisedPort: TRAEFIK_HTTP3_PORT,
 				},
-				...(process.env.NODE_ENV === "production" && {
-					http: {
-						tls: {
-							certResolver: "letsencrypt",
-						},
+				http: {
+					tls: {
+						certResolver: "letsencrypt",
 					},
-				}),
+				},
 			},
 		},
 		api: {
 			insecure: true,
 		},
-		...(process.env.NODE_ENV === "production" && {
-			certificatesResolvers: {
-				letsencrypt: {
-					acme: {
-						email: "test@localhost.com",
-						storage: "/etc/dokploy/traefik/dynamic/acme.json",
-						httpChallenge: {
-							entryPoint: "web",
-						},
-					},
+		certificatesResolvers: {
+			letsencrypt: {
+				acme: {
+					email: email,
+					storage: "/etc/dokploy/traefik/dynamic/acme.json",
+					...(challengeType === "dns"
+						? {
+								dnsChallenge: {
+									provider: "cloudflare",
+								},
+							}
+						: {
+								httpChallenge: {
+									entryPoint: "web",
+								},
+							}),
 				},
 			},
-		}),
+		},
 	};
 
 	const yamlStr = stringify(configObject);
@@ -320,7 +465,10 @@ export const getDefaultTraefikConfig = () => {
 	return yamlStr;
 };
 
-export const getDefaultServerTraefikConfig = () => {
+export const getDefaultServerTraefikConfig = (env?: string[]) => {
+	const challengeType = getChallengeType(env);
+	const email = getLetsEncryptEmail(env);
+
 	const configObject: MainTraefikConfig = {
 		providers: {
 			swarm: {
@@ -359,11 +507,19 @@ export const getDefaultServerTraefikConfig = () => {
 		certificatesResolvers: {
 			letsencrypt: {
 				acme: {
-					email: "test@localhost.com",
+					email: email,
 					storage: "/etc/dokploy/traefik/dynamic/acme.json",
-					httpChallenge: {
-						entryPoint: "web",
-					},
+					...(challengeType === "dns"
+						? {
+								dnsChallenge: {
+									provider: "cloudflare",
+								},
+							}
+						: {
+								httpChallenge: {
+									entryPoint: "web",
+								},
+							}),
 				},
 			},
 		},
@@ -403,6 +559,9 @@ export const createDefaultTraefikConfig = () => {
 	writeFileSync(mainConfig, yamlStr, "utf8");
 	console.log("Traefik config created successfully");
 };
+
+// Export helper functions for use in other modules
+export { getChallengeType, getLetsEncryptEmail };
 
 export const getDefaultMiddlewares = () => {
 	const defaultMiddlewares = {
