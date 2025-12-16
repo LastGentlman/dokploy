@@ -1,9 +1,4 @@
-import {
-	existsSync,
-	readFileSync,
-	statSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paths } from "@dokploy/server/constants";
 import { readEnvironmentVariables } from "@dokploy/server/services/settings";
@@ -110,7 +105,7 @@ export const updateLetsEncryptEmail = async (
 		}
 
 		const challengeType = getChallengeType(envVars);
-		const { MAIN_TRAEFIK_PATH } = paths();
+		const { MAIN_TRAEFIK_PATH } = paths(!!serverId);
 		const configPath = join(MAIN_TRAEFIK_PATH, "traefik.yml");
 		const configContent = readFileSync(configPath, "utf8");
 		const config = parse(configContent) as MainTraefikConfig;
@@ -234,7 +229,7 @@ export const verifyTlsConfiguration = async (
 	};
 
 	try {
-		const { MAIN_TRAEFIK_PATH, DYNAMIC_TRAEFIK_PATH } = paths();
+		const { MAIN_TRAEFIK_PATH, DYNAMIC_TRAEFIK_PATH } = paths(!!serverId);
 		const configPath = join(MAIN_TRAEFIK_PATH, "traefik.yml");
 		const acmeJsonPath = join(DYNAMIC_TRAEFIK_PATH, "acme.json");
 
